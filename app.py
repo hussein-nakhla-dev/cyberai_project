@@ -112,7 +112,6 @@ st.markdown(f"""
         text-align: {align_css};
         unicode-bidi: plaintext;
     }}
-    /* زر الفحص الرئيسي بحجم كامل */
     .stButton button {{
         background: linear-gradient(135deg, #00adb5, #1f4068);
         color: white;
@@ -150,10 +149,11 @@ st.markdown(f"""
 t = {
     "title": "منصة استخبارات تهديدات سيبرانية مدعومة بالذكاء الاصطناعي 🛡️" if not is_en else "AI-Powered Cyber Threat Intelligence Platform 🛡️",
     "welcome": "منصة مدعومة بالذكاء الاصطناعي" if not is_en else "AI-powered platform.",
-    "input_label": "🎯 أدخل الهدف المطلوب فحصه (رابط موقع، عنوان IP، أو نص بريد إلكتروني):" if not is_en else "🎯 Enter target to scan (URL, IP Address, or Email text):",
-    "placeholder": "مثال: https://jolz.sa أو 8.8.8.8 أو نص الرسالة المشبوهة..." if not is_en else "Example: https://jolz.sa or 8.8.8.8 or suspicious text...",
+    "input_label": "🎯 أدخل الهدف المطلوب فحصه (رابط موقع، عنوان IP، أو بريد إلكتروني صحيح):" if not is_en else "🎯 Enter target to scan (URL, IP Address, or valid Email):",
+    "placeholder": "مثال: https://jolz.sa أو 8.8.8.8 أو contact@domain.com..." if not is_en else "Example: https://jolz.sa or 8.8.8.8 or contact@domain.com...",
     "btn_scan": "بدء الفحص الشامل والمتقدم" if not is_en else "Run Ultimate Comprehensive Scan",
     "err_empty": "⚠️ يرجى إدخال هدف صحيح في الخانة المخصصة." if not is_en else "⚠️ Please enter a valid target in the designated field.",
+    "err_invalid": "⚠️ الهدف المدخل غير صالح! يرجى إدخال (رابط موقع صحيح مثل jolz.sa، عنوان IP، أو بريد إلكتروني صحيح)." if not is_en else "⚠️ Invalid target! Please enter a valid URL, IP address, or email.",
     "spinner": "جاري إجراء الفحص الاستخباراتي الشامل والمتكامل لـ" if not is_en else "Running absolute comprehensive intelligence inspection for",
     "success": "✨ تم إتمام التحليل الشامل والمتقدم بنجاح!" if not is_en else "✨ Ultimate comprehensive analysis completed successfully!",
     "intro_title": "📖 نظرة عامة والهُوية المؤسسية للهدف:" if not is_en else "📖 Target Overview & Enterprise Identity:",
@@ -167,7 +167,6 @@ t = {
     "tech_title": "⚙️ البصمة التقنية، فحص الـ CORS، الكوكيز واستطلاع النطاقات:" if not is_en else "⚙️ Deep Technical, CORS, Cookies & Recon Intelligence:",
     "advanced_title": "🛡️ صندوق استخبارات الدفاع المتقدم وحماية النطاق (WAF & Headers Box):" if not is_en else "🛡️ Advanced Defense & WAF Intelligence Box:",
     
-    # تسميات الأزرار المستقلة الجديدة ذات الحجم الصغير والأيقونات الاحترافية
     "threat_btn": "🔮 فحص السمعة العالمية (Threat Intel)" if not is_en else "🔮 Global Threat Intelligence",
     "threat_box_title": "🔮 صندوق تقييم السمعة العالمية وقواعد بيانات التهديدات (XDR & Threat Feeds):" if not is_en else "🔮 Global Reputation & Threat Intelligence Feeds (XDR):",
     
@@ -190,8 +189,8 @@ t = {
     "imp_3": "تفعيل ترويسات الأمان المتقدمة وتجديد شهادات التشفير." if not is_en else "Implement advanced security headers and renew SSL certificates.",
     "imp_ip_1": "إغلاق المنافذ غير الأساسية." if not is_en else "Close non-essential ports and restrict exposure.",
     "imp_ip_2": "تطبيق قواعد صارمة للوصول لخدمات التحكم." if not is_en else "Deploy strict firewall rules for SSH and RDP.",
-    "imp_phish_1": "عدم التفاعل مع الروابط غير الموثوقة." if not is_en else "Never interact with or submit credentials via unverified links.",
-    "imp_phish_2": "الإبلاغ عن الرسائل المشبوهة." if not is_en else "Report suspicious messages to security operations."
+    "imp_phish_1": "التأكد من مصداقية المرسل قبل التفاعل مع أي روابط." if not is_en else "Verify sender authenticity before interacting with links.",
+    "imp_phish_2": "الإبلاغ عن عناوين البريد المشبوهة لفريق الأمان." if not is_en else "Report suspicious sender addresses to security team."
 }
 
 # رأس المنصة وزر اللغة
@@ -213,24 +212,41 @@ st.markdown(f"**{t['input_label']}**")
 user_input = st.text_area("", placeholder=t["placeholder"], height=100)
 
 if st.button(t["btn_scan"], use_container_width=True):
-    if not user_input.strip():
+    raw_input = user_input.strip()
+    if not raw_input:
         st.error(t["err_empty"])
+        st.session_state.last_scan_input = None
+        st.session_state.last_scan_result = None
     else:
-        st.session_state.last_scan_input = user_input.strip()
-        # إعادة تعيين حالات الأزرار المستقلة عند بدء فحص جديد
-        st.session_state.show_threat_intel = False
-        st.session_state.show_incident_ticket = False
-        st.session_state.show_port_scanner = False
+        # التحقق الصارم من صحة الإدخال (أن يكون IP أو Email صحيح أو Domain/URL صالح)
+        ip_regex = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
+        email_regex = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+        domain_regex = r"^(https?://)?([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z]{2,}(/.*)?$"
+
+        is_ip = bool(re.match(ip_regex, raw_input))
+        is_email = bool(re.match(email_regex, raw_input))
+        is_domain = bool(re.match(domain_regex, raw_input))
+
+        if not (is_ip or is_email or is_domain):
+            st.error(t["err_invalid"])
+            st.session_state.last_scan_input = None
+            st.session_state.last_scan_result = None
+        else:
+            st.session_state.last_scan_input = raw_input
+            st.session_state.show_threat_intel = False
+            st.session_state.show_incident_ticket = False
+            st.session_state.show_port_scanner = False
 
 if st.session_state.last_scan_input is not None:
     input_str = st.session_state.last_scan_input
     detected_type = ""
     ip_regex = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
+    email_regex = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     
     if re.match(ip_regex, input_str):
         detected_type = "IP Address" if is_en else "عنوان IP"
-    elif "@" in input_str and "." in input_str and "http" not in input_str:
-        detected_type = "Text / Email" if is_en else "نص / بريد إلكتروني"
+    elif re.match(email_regex, input_str):
+        detected_type = "Email Address" if is_en else "عنوان بريد إلكتروني"
     else:
         detected_type = "URL" if is_en else "رابط موقع (URL)"
 
@@ -492,35 +508,16 @@ if st.session_state.last_scan_input is not None:
             improvements = [t["imp_ip_1"], t["imp_ip_2"]]
 
         else:
-            email_content = input_str
-            target_name = "Text Content / Email Message" if is_en else "محتوى نصي / رسالة بريد"
-            site_identity = "Messaging Content or Suspicious Text" if is_en else "محتوى مراسلة أو نص مشبوه"
+            email_address = input_str
+            target_name = email_address
+            site_identity = "Email Entity / Contact Target" if is_en else "عنوان بريد إلكتروني مفحوص"
             
-            urls_found = re.findall(r'https?://[^\s]+', email_content)
-            risk_keywords = ["password", "verify", "update", "account", "urgent", "bank", "كلمة المرور", "تحديث", "حساب", "عاجل", "تأكيد"]
-            matched_kw = [kw for kw in risk_keywords if kw in email_content.lower()]
-            
-            if urls_found:
-                findings.append(
-                    f"Message contains external links ({len(urls_found)})." if is_en 
-                    else f"تحتوي الرسالة على روابط خارجية مشبوهة بعدد ({len(urls_found)})."
-                )
-            if matched_kw:
-                risk_score = 95
-                risk_status = "High (Phishing Threat Detected)" if is_en else "خطيرة (تهديد تصيد احتيالي مؤكد)"
-                findings.append(
-                    f"High-sensitivity threat indicators matched: ({', '.join(matched_kw)})." if is_en 
-                    else f"تم رصد مصطلحات احتيالية ومؤشرات تهديد عالية الحساسية: ({', '.join(matched_kw)})."
-                )
-            
-            if not matched_kw and not urls_found:
-                risk_score = 10
-                risk_status = "Excellent (Clean Content)" if is_en else "ممتازة (محتوى سليم)"
-                findings.append(
-                    "Content Security Audit: Text appears safe." if is_en 
-                    else "تدقيق أمان المحتوى: النص يبدو آمناً وخالياً من مؤشرات التصيد."
-                )
-
+            risk_score = 15
+            risk_status = "Verified Clean Email Format" if is_en else "صيغة بريد إلكتروني نظامية وآمنة"
+            findings.append(
+                f"Email Intelligence Recon: Address format verified ({email_address})." if is_en 
+                else f"استخبارات البريد الإلكتروني: تم التحقق من سلامة وصيغة العنوان ({email_address})."
+            )
             improvements = [t["imp_phish_1"], t["imp_phish_2"]]
 
         report_hash = hashlib.sha256(f"{input_str}-{datetime.datetime.now()}".encode()).hexdigest()[:16]
@@ -596,9 +593,6 @@ if st.session_state.last_scan_result is not None:
         box_html += "</ul></div>"
         st.markdown(box_html, unsafe_allow_html=True)
 
-    # -------------------------------------------------------------
-    # أزرار العمليات الإضافية المستقلة (بحجم صغير وموزعة في أعمدة احترافية)
-    # -------------------------------------------------------------
     st.markdown("---")
     btn_col1, btn_col2, btn_col3 = st.columns(3)
 
@@ -614,7 +608,6 @@ if st.session_state.last_scan_result is not None:
         if st.button(t["ports_btn"], use_container_width=True):
             st.session_state.show_port_scanner = not st.session_state.show_port_scanner
 
-    # 1. صندوق فحص السمعة والتهديدات
     if st.session_state.show_threat_intel:
         threat_score = "0 / 85 (Clean / Safe)" if is_en else "0 / 85 (آمن / خالي من القوائم السوداء)"
         blacklists_checked = "Spamhaus, VirusTotal DB, AbuseIPDB, Google SafeBrowsing"
@@ -633,7 +626,6 @@ if st.session_state.last_scan_result is not None:
         """
         st.markdown(threat_box_html, unsafe_allow_html=True)
 
-    # 2. صندوق تذكرة الحوادث الأمنية الموجهة لإدارة CISO
     if st.session_state.show_incident_ticket:
         ticket_id = f"INC-{datetime.datetime.now().strftime('%Y%m%d')}-{res['report_hash'][:4].upper()}"
         priority_level = "P1 - Critical Enterprise Action" if res['risk_score'] > 70 else "P3 - Moderate Monitoring" if res['risk_score'] > 35 else "P4 - Routine Status"
@@ -652,7 +644,6 @@ if st.session_state.last_scan_result is not None:
         """
         st.markdown(ticket_box_html, unsafe_allow_html=True)
 
-    # 3. صندوق فحص المنافذ الشبكية الموسع
     if st.session_state.show_port_scanner:
         ports_box_html = f"""
         <div class="ports-box">
@@ -764,6 +755,5 @@ if st.session_state.last_scan_result is not None:
         use_container_width=True
     )
 
-# التذييل بالصيغة المطلوبة تماماً
 st.markdown("---")
 st.markdown(f"<p style='text-align: center; color: #8b949e;'>{t['footer']}</p>", unsafe_allow_html=True)
