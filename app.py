@@ -369,15 +369,14 @@ if st.session_state.last_scan_input is not None:
             except:
                 pass
 
-            try:
+          try:
                 ct_resp = requests.get(f"https://crt.sh/?q=%25.{domain}&output=json", timeout=3.5)
                 if ct_resp.status_code == 200:
                     ct_data = ct_resp.json()
                     subdomains = set()
                     for entry in ct_data[:40]:
                         name_value = entry.get("name_value", "")
-                      for sub in name_value.split("\n"):
-"):
+                        for sub in name_value.split("\n"):
                             if domain in sub and "*" not in sub:
                                 subdomains.add(sub.strip())
                     if subdomains:
