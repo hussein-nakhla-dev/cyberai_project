@@ -253,7 +253,7 @@ if st.session_state.last_scan_input is not None:
     with st.spinner(f"{t['spinner']} ({detected_type})..."):
         
         risk_status = "Excellent (Enterprise Secure)" if is_en else "ممتازة (مستوى أمان مؤسسي آمن)"
-        risk_score = 0
+        risk_score = 10
         findings = []
         tech_details = []
         advanced_box_details = []
@@ -281,14 +281,14 @@ if st.session_state.last_scan_input is not None:
 
             query_params = parse_qs(parsed.query)
             if query_params:
-                risk_score += 10
+                risk_score += 15
                 findings.append(
                     f"Detected ({len(query_params)}) interactive dynamic parameters, potential injection vectors." if is_en 
                     else f"تم رصد معاملات ديناميكية تفاعلية بعدد ({len(query_params)} Parameters)، وهي نقاط محتملة لحقن البيانات."
                 )
 
             try:
-                ns_resp = requests.get(f"https://dns.google/resolve?name={domain}&type=NS", timeout=3.0).json()
+                ns_resp = requests.get(f"https://dns.google/resolve?name={domain}&type=NS", timeout=2.0).json()
                 if "Answer" in ns_resp:
                     ns_servers = [ans.get("data", "") for ans in ns_resp["Answer"]]
                     advanced_box_details.append(
@@ -299,7 +299,7 @@ if st.session_state.last_scan_input is not None:
                 pass
 
             try:
-                resp = requests.get(url, timeout=4.0, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
+                resp = requests.get(url, timeout=3.5, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
                 server_tech = resp.headers.get("Server", "Hidden / Protected WAF")
                 powered_by = resp.headers.get("X-Powered-By", "Secured Stack")
                 advanced_box_details.append(
@@ -324,7 +324,7 @@ if st.session_state.last_scan_input is not None:
                 pass
 
             try:
-                whois_resp = requests.get(f"https://dns.google/resolve?name={domain}&type=SOA", timeout=3.0).json()
+                whois_resp = requests.get(f"https://dns.google/resolve?name={domain}&type=SOA", timeout=2.5).json()
                 if "Answer" in whois_resp:
                     tech_details.append(
                         f"WHOIS / DNS Authority: Active SOA record validated for {domain}." if is_en 
@@ -337,12 +337,9 @@ if st.session_state.last_scan_input is not None:
             exposed_files = []
             for sf in sensitive_files:
                 try:
-                    sf_resp = requests.get(f"https://{domain}/{sf}", timeout=2.0)
-                    if sf_resp.status_code == 200 and len(sf_resp.text) > 0:
-                        text_start = sf_resp.text[:200].lower()
-                        # تحقق دقيق لمنع False Positive من صفحات الخطأ 404 المخصصة في Netlify / Vercel
-                        if not any(tag in text_start for tag in ["<!doctype html>", "<html", "<head", "404", "page not found"]):
-                            exposed_files.append(sf)
+                    sf_resp = requests.get(f"https://{domain}/{sf}", timeout=1.5)
+                    if sf_resp.status_code == 200 and len(sf_resp.text) > 0 and "html" not in sf_resp.text[:50].lower():
+                        exposed_files.append(sf)
                 except:
                     pass
             
@@ -370,14 +367,13 @@ if st.session_state.last_scan_input is not None:
                 pass
 
             try:
-                ct_resp = requests.get(f"https://crt.sh/?q=%25.{domain}&output=json", timeout=3.5)
+                ct_resp = requests.get(f"https://crt.sh/?q=%25.{domain}&output=json", timeout=3.0)
                 if ct_resp.status_code == 200:
                     ct_data = ct_resp.json()
                     subdomains = set()
                     for entry in ct_data[:40]:
                         name_value = entry.get("name_value", "")
-                        for sub in name_value.split("
-"):
+                        for sub in name_value.split("\n"):
                             if domain in sub and "*" not in sub:
                                 subdomains.add(sub.strip())
                     if subdomains:
@@ -388,11 +384,8 @@ if st.session_state.last_scan_input is not None:
             except:
                 pass
 
-            insecure_cookies = []
-            cors_wildcard = False
-
             try:
-                cookie_resp = requests.get(url, timeout=4.0, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
+                cookie_resp = requests.get(url, timeout=3.0, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
                 cookies = cookie_resp.cookies
                 if cookies:
                     insecure_cookies = [c.name for c in cookies if not c.secure or not c.has_nonstandard_attr('HttpOnly')]
@@ -410,7 +403,6 @@ if st.session_state.last_scan_input is not None:
                 
                 cors_header = cookie_resp.headers.get("Access-Control-Allow-Origin", "")
                 if cors_header == "*":
-                    cors_wildcard = True
                     risk_score += 15
                     findings.append(
                         "Insecure CORS Policy: Access-Control-Allow-Origin is set to wild-card (*), data leakage risk." if is_en 
@@ -419,10 +411,9 @@ if st.session_state.last_scan_input is not None:
             except:
                 pass
 
-            has_ssl_issue = False
             try:
                 ctx = ssl.create_default_context()
-                with socket.create_connection((domain, 443), timeout=4.0) as sock:
+                with socket.create_connection((domain, 443), timeout=2.5) as sock:
                     with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                         cert_bin = ssock.getpeercert(binary_form=True)
                         cert = x509.load_der_x509_certificate(cert_bin, default_backend())
@@ -436,22 +427,15 @@ if st.session_state.last_scan_input is not None:
                         )
 
                         if days_left < 15:
-                            has_ssl_issue = True
                             risk_score += 30
                             findings.append(
                                 f"Critical SSL Alert: Certificate expiring in {days_left} days." if is_en 
                                 else f"تنبيه شهادة SSL حرج: شهادة التشفير ستنتهي خلال {days_left} يوماً فقط."
                             )
-            except socket.timeout:
-                tech_details.append(
-                    "SSL Verification Timeout: Could not complete handshake in allocated time." if is_en 
-                    else "مهلة التحقق من SSL: تعذر إكمال المصافحة التشفيرية في الوقت المحدد."
-                )
-            except Exception:
-                has_ssl_issue = True
-                risk_score += 25
+            except:
+                risk_score += 40
                 findings.append(
-                    "SSL Certificate validation failed or insecure configuration." if is_en 
+                    "SSL Certificate validation failed." if is_en 
                     else "فشل التحقق من صحة شهادة التشفير SSL أو إعداداتها غير آمنة."
                 )
 
@@ -462,23 +446,7 @@ if st.session_state.last_scan_input is not None:
             else:
                 risk_status = "Excellent (Enterprise Secure)" if is_en else "ممتازة (مستوى أمان مؤسسي آمن)"
 
-            # توليد التوصيات والمعالجات ديناميكياً 100% بناءً على الثغرات المرصودة فقط
-            improvements = []
-            if exposed_files:
-                improvements.append(t["imp_1"])
-
-            if insecure_cookies or cors_wildcard:
-                improvements.append(t["imp_2"])
-
-            missing_headers_present = any("Security Headers Warning" in adv or "تحذير ترويسات الأمان" in adv for adv in advanced_box_details)
-            if has_ssl_issue or missing_headers_present:
-                improvements.append(t["imp_3"])
-
-            if not improvements:
-                improvements.append(
-                    "لم يتم رصد أي ثغرات حرجة تتطلب معالجة فورية، المحيط الرقمي للهدف آمن ولا توجد توصيات عاجلة." if not is_en
-                    else "No critical vulnerabilities found requiring immediate remediation; target perimeter is secure."
-                )
+            improvements = [t["imp_1"], t["imp_2"], t["imp_3"]]
 
         elif detected_type in ["IP Address", "عنوان IP"]:
             ip_address = input_str
@@ -486,7 +454,7 @@ if st.session_state.last_scan_input is not None:
             site_identity = "Network Host or Hosted Server (Server/IP)" if is_en else "خادم شبكة أو سيرفر مستضاف (Server/IP)"
             
             try:
-                geo_resp = requests.get(f"http://ip-api.com/json/{ip_address}", timeout=2.5).json()
+                geo_resp = requests.get(f"http://ip-api.com/json/{ip_address}", timeout=2.0).json()
                 if geo_resp.get("status") == "success":
                     country = geo_resp.get("country", "Unknown")
                     city = geo_resp.get("city", "Unknown")
@@ -503,7 +471,7 @@ if st.session_state.last_scan_input is not None:
             for port, service in extended_ports.items():
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(0.8)
+                    sock.settimeout(0.6)
                     if sock.connect_ex((ip_address, port)) == 0:
                         open_ports.append(f"Port {port} ({service})")
                     sock.close()
@@ -515,41 +483,36 @@ if st.session_state.last_scan_input is not None:
                 else f"المنافذ المفتوحة: {', '.join(open_ports) if open_ports else 'لا توجد منافذ مكشوفة شائعة'}"
             )
             
-            improvements = []
             if any(p in str(open_ports) for p in ["21", "3306", "3389"]):
-                risk_score = 75
+                risk_score = 80
                 risk_status = "High (Exposed Sensitive Services)" if is_en else "خطيرة (خدمات حساسة مكشوفة للعامة)"
                 findings.append(
                     "Critical management or database ports exposed directly." if is_en 
                     else "تم اكتشاف منافذ إدارة أو قواعد بيانات حساسة مكشوفة مباشرة."
                 )
-                improvements.extend([t["imp_ip_1"], t["imp_ip_2"]])
             elif open_ports:
-                risk_score = 35
+                risk_score = 45
                 risk_status = "Medium (Review Open Ports)" if is_en else "متوسطة (تتطلب مراجعة المنافذ)"
                 findings.append(
                     "Open ports identified requiring firewall rules." if is_en 
                     else "توجد منافذ مفتوحة تتطلب مراجعة قواعد جدار حماية الشبكة."
                 )
-                improvements.append(t["imp_ip_1"])
             else:
-                risk_score = 0
+                risk_score = 15
                 risk_status = "Excellent (Secure Perimeter)" if is_en else "ممتازة (محيط الشبكة آمن)"
                 findings.append(
                     "Perimeter Scan Passed: All monitored ports filtered." if is_en 
                     else "نجاح فحص المحيط: كافة المنافذ المراقبة محمية أو مغلقة."
                 )
-                improvements.append(
-                    "المحيط الرقمي للخادم محمي بنجاح ولاتوجد منافذ حساسة مكشوفة." if not is_en
-                    else "Server network perimeter is fully secured with no critical ports exposed."
-                )
+
+            improvements = [t["imp_ip_1"], t["imp_ip_2"]]
 
         else:
             email_address = input_str
             target_name = email_address
             site_identity = "Email Entity / Contact Target" if is_en else "عنوان بريد إلكتروني مفحوص"
             
-            risk_score = 0
+            risk_score = 15
             risk_status = "Verified Clean Email Format" if is_en else "صيغة بريد إلكتروني نظامية وآمنة"
             findings.append(
                 f"Email Intelligence Recon: Address format verified ({email_address})." if is_en 
@@ -700,7 +663,15 @@ if st.session_state.last_scan_result is not None:
     st.subheader(t["impr_title"])
     st.info(t["impr_box"])
     
-    for imp in res["improvements"]:
+    current_improvements = (
+        ["Secure and restrict access to sensitive configuration files (.env, .git).", 
+         "Enforce Secure, HttpOnly flags and strict CORS policies.", 
+         "Implement advanced security headers and renew SSL certificates."] if is_en 
+        else ["تأمين وحظر الوصول لملفات الإعدادات الحساسة (.env, .git).", 
+              "تفعيل حماية الكوكيز وضبط سياسات CORS بدقة.", 
+              "تفعيل ترويسات الأمان المتقدمة وتجديد شهادات التشفير."]
+    )
+    for imp in current_improvements:
         st.markdown(f"* ✔️ {imp}")
 
     st.markdown("---")
@@ -717,9 +688,23 @@ if st.session_state.last_scan_result is not None:
 
     rep_site_identity = res['site_identity']
     rep_risk_status = res['risk_status']
-    rep_improvements = res['improvements']
-    rep_findings = res['findings']
-    rep_advanced = res['advanced_box_details']
+    
+    if rep_is_en:
+        rep_improvements = [
+            "Secure and restrict access to sensitive configuration files (.env, .git).", 
+            "Enforce Secure, HttpOnly flags and strict CORS policies.", 
+            "Implement advanced security headers and renew SSL certificates."
+        ]
+        rep_findings = [f.replace("تم رصد", "Detected").replace("فشل", "Failed").replace("تحذير", "Warning") for f in res['findings']]
+        rep_advanced = res['advanced_box_details']
+    else:
+        rep_improvements = [
+            "تأمين وحظر الوصول لملفات الإعدادات الحساسة (.env, .git).", 
+            "تفعيل حماية الكوكيز وضبط سياسات CORS بدقة.", 
+            "تفعيل ترويسات الأمان المتقدمة وتجديد شهادات التشفير."
+        ]
+        rep_findings = res['findings']
+        rep_advanced = res['advanced_box_details']
 
     html_report_content = f"""
     <!DOCTYPE html>
