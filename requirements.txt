@@ -1,4 +1,10 @@
-streamlit
-requests
-pandas
-cryptography
+streamlit>=1.40
+requests>=2.31
+cryptography>=42
+dnspython>=2.4
+reportlab>=4.0
+arabic-reshaper>=3.0
+python-bidi>=0.4.2
+tldextract>=5.1
+# dev
+pytest>=8
